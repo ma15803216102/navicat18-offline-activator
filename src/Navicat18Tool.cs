@@ -340,15 +340,27 @@ internal static class PePatcher
     /// <summary>安装 version.dll 方式（运行时补丁，不修改 Navicat 的任何文件）</summary>
     public static void InstallProxy(string dir, Action<string> log)
     {
+        // ★ 首选：Navicat 已经在运行 → 直接对目标进程做内存补丁，**不写任何文件**。
+        uint pid = 0;
+        try { pid = AutoAct.FirstNavicatPid(); } catch { }
+        if (pid != 0)
+        {
+            log("检测到 Navicat 正在运行（pid=" + pid + "）→ 直接内存补丁（不落盘）");
+            string err = RuntimePatch.Apply((int)pid, log);
+            if (string.IsNullOrEmpty(err))
+            {
+                log("✔ 运行时补丁完成：没有生成 / 修改任何 version.dll 文件");
+                return;
+            }
+            log("运行时补丁未完成：" + err);
+            log("（回退到 version.dll 方式：先释放文件，Navicat 加载后自动改名/删除）");
+        }
+
         byte[] dll = ProxyData.GetDll();
         string vd = ProxyPath(dir);
 
-        // 清掉上一次的残留（可能是工具关闭后才启动 Navicat 留下的）
         try { if (File.Exists(vd)) File.Delete(vd); } catch { }
 
-        // ★ 只在「准备启动 Navicat」的窗口期落盘：
-        //   一旦 Navicat 把它映射进进程，ProxyWatch 会立刻把磁盘文件删掉 ——
-        //   进程内模块继续有效，磁盘上不再留一个常驻、随时会被杀软扫到的代理 DLL。
         File.WriteAllBytes(vd, dll);
         if (!IsProxyInstalled(dir))
             throw new Exception("代理 DLL 写入校验失败：" + PePatcher.ProxyFileName + " 内容与预期不一致");

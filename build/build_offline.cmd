@@ -49,7 +49,7 @@ if not exist bin mkdir bin
   /r:"%WPFDIR%\UIAutomationTypes.dll" ^
   /out:bin\Navicat18Tool-Offline.exe ^
   src\Navicat18Tool.cs src\lic.cs src\genshin.cs src\form_new.cs src\pdata.cs ^
-  src\uia.cs src\autoact.cs src\offline.cs src\manual.cs src\waitform.cs src\pem_local.cs src\proxy_data.cs
+  src\runtime.cs src\uia.cs src\autoact.cs src\offline.cs src\manual.cs src\waitform.cs src\pem_local.cs src\proxy_data.cs
 
 if errorlevel 1 (
   echo BUILD FAILED

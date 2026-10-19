@@ -1,0 +1,26 @@
+# ---- 私钥与生成物（绝不入库）----
+keys/
+src/offline.cs
+src/pem_local.cs
+
+# ---- 编译产物 ----
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.obj
+
+# ---- 备份/临时 ----
+*.orig
+*.bak
+*.log
+_*.py
+_prep*.py
+__pycache__/
+
+# ---- 编辑器 ----
+.vs/
+.vscode/
+*.user

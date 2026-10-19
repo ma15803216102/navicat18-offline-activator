@@ -143,7 +143,8 @@ navicat18-offline-activator/
 ├─ build/
 │  ├─ build_proxy.cmd      编译 bin/version.dll
 │  └─ build_offline.cmd    编译 bin/Navicat18Tool-Offline.exe
-├─ docs/原理.md
+├─ docs/原理.md              原理（请求码/激活码模型、补丁机制、运行时补丁）
+├─ docs/使用说明.md          用户手册（6 步流程、两种方式对比、常见问题、状态自检）
 ├─ keys/                   （git-ignored）
 └─ bin/                    （git-ignored）
 ```

@@ -1,5 +1,7 @@
 # Navicat 18 离线激活工具（开源版）
 
+> 双仓同步：Gitee https://gitee.com/mzy666666/navicat18-offline-activator ｜ GitHub https://github.com/ma15803216102/navicat18-offline-activator
+
 一个**不需要登录、不需要联网、不需要服务器**的 Navicat Premium 18 离线激活工具。
 全部签名都在本机完成——因为你用的是**你自己生成的密钥对**。
 

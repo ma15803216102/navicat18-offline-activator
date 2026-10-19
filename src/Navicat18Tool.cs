@@ -340,39 +340,29 @@ internal static class PePatcher
     /// <summary>安装 version.dll 方式（运行时补丁，不修改 Navicat 的任何文件）</summary>
     public static void InstallProxy(string dir, Action<string> log)
     {
-        string exe = Path.Combine(dir, "navicat.exe");
-        string libcf = Path.Combine(dir, "libcf.dll");
-        if (!File.Exists(exe) || !File.Exists(libcf))
-            throw new Exception("该目录下没有 navicat.exe / libcf.dll：" + dir);
-
-        // ★ 与文件级补丁互斥：若之前用的是 libcf 方式，先还原回去。
-        //   否则 libcf 里的 .pmod 节会干扰运行时补丁（代理已排除该节，但还原更干净）。
-        if (HasPmod(libcf) || VerifyPem(exe))
-        {
-            log("检测到已安装的 libcf 文件级补丁，先还原 Navicat 原始文件…");
-            Uninstall(dir, log);
-        }
-
-        KillNavicat(log);
-
         byte[] dll = ProxyData.GetDll();
         string vd = ProxyPath(dir);
-        WriteAllBytesRetry(vd, dll, log);
-        log("已释放代理 " + ProxyFileName + "（" + dll.Length + " 字节）");
 
-        // 回读校验：确认写进去的就是这一份（写失败会让补丁完全无效却看不出来）
+        // 清掉上一次的残留（可能是工具关闭后才启动 Navicat 留下的）
+        try { if (File.Exists(vd)) File.Delete(vd); } catch { }
+
+        // ★ 只在「准备启动 Navicat」的窗口期落盘：
+        //   一旦 Navicat 把它映射进进程，ProxyWatch 会立刻把磁盘文件删掉 ——
+        //   进程内模块继续有效，磁盘上不再留一个常驻、随时会被杀软扫到的代理 DLL。
+        File.WriteAllBytes(vd, dll);
         if (!IsProxyInstalled(dir))
-            throw new Exception("代理 DLL 写入校验失败：" + ProxyFileName + " 内容与预期不一致");
+            throw new Exception("代理 DLL 写入校验失败：" + PePatcher.ProxyFileName + " 内容与预期不一致");
 
-        log("运行方式：不修改 navicat.exe / libcf.dll，由代理在 Navicat 进程内完成补丁。");
-        log("优点：Navicat 官方更新不会移除它（更新只替换它自己的文件）。");
+        log("已按需释放代理 " + PePatcher.ProxyFileName + "（" + dll.Length + " 字节）；"
+            + "Navicat 加载后会自动从磁盘删除");
+        ProxyWatch.Start(dir, log);
     }
 
     /// <summary>卸载 version.dll 方式</summary>
     public static void UninstallProxy(string dir, Action<string> log)
     {
         string vd = ProxyPath(dir);
-        if (!File.Exists(vd)) { log("未发现 " + ProxyFileName + "，跳过"); return; }
+        if (!File.Exists(vd)) { log("未发现 " + PePatcher.ProxyFileName + "，跳过"); return; }
         KillNavicat(log);
         // 代理被 Navicat 加载时文件被占用，删不掉就改名为 .removed 待下次清理
         try { File.Delete(vd); log("已删除 " + ProxyFileName); }
@@ -383,9 +373,9 @@ internal static class PePatcher
                 string t = vd + ".removed";
                 if (File.Exists(t)) File.Delete(t);
                 File.Move(vd, t);
-                log("代理文件被占用，已改名 " + ProxyFileName + ".removed（重启后可手动删除）");
+                log("代理文件被占用，已改名 " + PePatcher.ProxyFileName + ".removed（重启后可手动删除）");
             }
-            catch (Exception ex) { log("删除 " + ProxyFileName + " 失败：" + ex.Message); }
+            catch (Exception ex) { log("删除 " + PePatcher.ProxyFileName + " 失败：" + ex.Message); }
         }
     }
 
@@ -487,7 +477,7 @@ internal static class PePatcher
         if (File.Exists(vd))
         {
             try { File.Delete(vd); log("已删除 " + ProxyFileName); any = true; }
-            catch { log("删除 " + ProxyFileName + " 失败（可能正被 Navicat 占用，请关闭后重试）"); }
+            catch { log("删除 " + PePatcher.ProxyFileName + " 失败（可能正被 Navicat 占用，请关闭后重试）"); }
         }
         string vdOld = Path.Combine(dir, "version.dll.bak");
         if (File.Exists(vdOld)) log("提示：存在 version.dll.bak（早期劫持版残留），可手动删除。");
@@ -668,5 +658,152 @@ internal static class KeyGen
         if (string.IsNullOrEmpty(code))
             throw new Exception(string.IsNullOrEmpty(msg) ? "服务端签发失败，请稍后重试。" : msg);
         return code;
+    }
+}
+
+
+/// <summary>
+/// 代理 DLL 的「按需释放 + 加载即删」看护。
+///
+/// 为什么要这样：把 version.dll 常驻在 Navicat 安装目录，等于给杀软留一个
+/// 「DLL 代理劫持 + 内存补丁」的静态样本，每次全盘/目录扫描都会报。
+/// 现在只在启动 Navicat 前的窗口期落盘，一旦目标进程已经把它映射进地址空间，
+/// 立即 unlink 磁盘文件 —— 已映射的模块不受影响，而磁盘上不再有可被扫描的对象。
+/// </summary>
+internal static class ProxyWatch
+{
+    private static volatile bool _running;
+    private static string _dir;
+    private static Action<string> _log;
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint pid);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool Module32FirstW(IntPtr snap, ref MODULEENTRY32W me);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool Module32NextW(IntPtr snap, ref MODULEENTRY32W me);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr h);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern bool MoveFileExW(string from, string to, uint flags);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential,
+        CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private struct MODULEENTRY32W
+    {
+        public uint dwSize;
+        public uint th32ModuleID;
+        public uint th32ProcessID;
+        public uint GlblcntUsage;
+        public uint ProccntUsage;
+        public IntPtr modBaseAddr;
+        public uint modBaseSize;
+        public IntPtr hModule;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string szModule;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string szExePath;
+    }
+
+    public static void Start(string dir, Action<string> log)
+    {
+        _dir = dir;
+        _log = log;
+        if (_running) return;
+        _running = true;
+        var th = new System.Threading.Thread(Loop);
+        th.IsBackground = true;
+        th.Start();
+    }
+
+    private static void Loop()
+    {
+        // 最长看护 10 分钟，覆盖「装完补丁 → 用户启动 Navicat」的时间窗
+        for (int i = 0; i < 1200; i++)
+        {
+            string dllPath = Path.Combine(_dir, PePatcher.ProxyFileName);
+            if (!File.Exists(dllPath)) return;      // 已被删/被卸载
+            try
+            {
+                foreach (var p in Process.GetProcessesByName("navicat"))
+                {
+                    try
+                    {
+                        if (IsLoaded((uint)p.Id, dllPath))
+                        {
+                            Log("✔ 代理已被 Navicat 加载：" + MakeItDisappear(dllPath));
+                            return;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            System.Threading.Thread.Sleep(500);
+        }
+        Log("（提示：等待 10 分钟仍未检测到 Navicat 加载代理；文件暂时保留，下次启动本工具会重新处理）");
+    }
+
+    /// <summary>目标进程是否已映射了我们这个路径下的 version.dll</summary>
+    private static bool IsLoaded(uint pid, string fullPath)
+    {
+        IntPtr snap = CreateToolhelp32Snapshot(0x8 | 0x10, pid);   // SNAPMODULE | SNAPMODULE32
+        if (snap == (IntPtr)(-1)) return false;
+        try
+        {
+            var me = new MODULEENTRY32W();
+            me.dwSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(MODULEENTRY32W));
+            if (!Module32FirstW(snap, ref me)) return false;
+            do
+            {
+                if (string.Equals(me.szModule, PePatcher.ProxyFileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        if (string.Equals(Path.GetFullPath(me.szExePath), Path.GetFullPath(fullPath),
+                                          StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+                    catch { return true; }
+                }
+            } while (Module32NextW(snap, ref me));
+        }
+        finally { CloseHandle(snap); }
+        return false;
+    }
+
+    /// <summary>
+    /// 让代理文件“从磁盘上消失”：
+    ///   · 已映射的 DLL 不能 DeleteFile（实测：拒绝访问），但可以改名 ——
+    ///     改名后安装目录里就不再有一个名为 version.dll 的常驻文件；
+    ///   · 改名后再登记「重启后删除」，重启后彻底消失。
+    /// </summary>
+    private static string MakeItDisappear(string path)
+    {
+        try { File.Delete(path); if (!File.Exists(path)) return "磁盘文件已删除（进程内仍然生效）"; }
+        catch { }
+
+        string dir = Path.GetDirectoryName(path);
+        if (string.IsNullOrEmpty(dir)) dir = ".";
+        string tmp = Path.Combine(dir, "~nvp_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".tmp");
+        try
+        {
+            File.Move(path, tmp);
+            try { MoveFileExW(tmp, null, 0x4); } catch { }   // MOVEFILE_DELAY_UNTIL_REBOOT
+            return "已更名为 " + Path.GetFileName(tmp) + "（目录里不再有 version.dll），并登记重启后删除";
+        }
+        catch (Exception ex)
+        {
+            return "改名失败：" + ex.Message;
+        }
+    }
+
+    private static void Log(string s)
+    {
+        try { if (_log != null) _log(s); } catch { }
     }
 }

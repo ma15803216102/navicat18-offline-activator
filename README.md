@@ -11,6 +11,7 @@
 | 是否改 Navicat 文件 | **是**（`libcf.dll` + `navicat.exe` 的公钥） | **否**（磁盘文件一个字节都不动） |
 | 官方更新后 | 被覆盖，需重装 | 仍然有效 |
 | 额外依赖 | 无 | 需要用 MinGW 编译代理 DLL（仓库不附带成品） |
+| 磁盘残留 | 补丁 DLL + `.orig` 备份 | 只在启动窗口期存在；Navicat 一加载就改名消失 |
 | 卸载 | 拷回 `.orig` | 删掉 `version.dll` |
 
 > ⚠️ 仅供学习研究、自有软件与已授权环境的兼容性测试使用。
@@ -93,7 +94,9 @@ build\build_offline.cmd
 1. 右键 **以管理员身份运行** `bin\Navicat18Tool-Offline.exe`（写 `Program Files` 需要管理员）；
 2. 选择激活方式：
    - **libcf.dll（默认）**：点【安装补丁】→ 备份并改写 `libcf.dll` / `navicat.exe`；
-   - **version.dll**：点【安装补丁】→ 只往安装目录放一个 `version.dll`（需先完成构建第 4、5 步）；
+   - **version.dll**：点【安装补丁】→ 临时释放 `version.dll`（需先完成构建第 4、5 步）。
+     Navicat 一加载它，工具立刻把磁盘文件改名成 `~nvp_xxxx.tmp` 并登记重启后删除 ——
+     安装目录里不再常驻一个 `version.dll`。**每次启动 Navicat 前都需要先点一次【安装补丁】**。
 3. 启动 Navicat → 【帮助】→【注册】；
 4. 按住 **Ctrl+Shift** 点【激活】→「手动激活」窗口，复制**请求码**；
 5. 回工具：粘贴请求码、填邮箱/公司 → 生成**激活码**；
@@ -139,6 +142,9 @@ navicat18-offline-activator/
 - **只支持 Navicat 18**：目标函数序言是版本相关的，换版本需要重新定位特征字节（改 `src/pdata.cs` 的 `_pro`）。
 - **换密钥必须重跑 `gen_payload.py`**：shell 里的模数是编译期写死的，工具不会自动同步。
 - `version.dll` 方式需要自己编译代理 DLL（本仓库不附带成品，原因见上）。
+- `version.dll` 方式的生命周期：先点【安装补丁】释放文件 → 启动 Navicat（加载）→ 文件立刻被改名/删除。
+  所以**每次启动 Navicat 前都要重新点一次**；改名留下的 `~nvp_*.tmp` 在重启后由系统删除
+  （工具卸载时也会顺手清掉）。
 - 官方更新会覆盖 `libcf.dll` / `navicat.exe`（文件级方式），升级后需重装补丁。
 - 私钥在你本机：任何拿到 `src/offline.cs` 或 `bin/Navicat18Tool-Offline.exe` 的人都能给自己签发激活码。
 

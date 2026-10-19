@@ -25,3 +25,6 @@ __pycache__/
 .vs/
 .vscode/
 *.user
+
+# release artifacts
+dist/

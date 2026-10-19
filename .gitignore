@@ -28,3 +28,6 @@ __pycache__/
 
 # release artifacts
 dist/
+
+# 对外文稿不入库
+docs/软件分享-*.md

@@ -168,6 +168,20 @@ navicat18-offline-activator/
 
 ---
 
+## 赞助
+
+这个工具免费、无任何功能限制。如果它帮你省下了买 Navicat 的钱，可以随手打赏一杯胡辣汤——
+**完全自愿，不打赏也照样能用全部功能**。
+
+| 支付宝 | 微信支付 |
+|---|---|
+| <img src="docs/images/sponsor-alipay.jpg" width="280" alt="支付宝收款码"> | <img src="docs/images/sponsor-wechat.png" width="280" alt="微信支付收款码"> |
+
+> 打赏不是购买、不构成任何服务承诺，也**不改变上面的非商业许可**——
+> 商业使用仍然需要单独授权。请量力而行，够用就好 🙂
+
+---
+
 ## 许可与免责
 
 - **许可**：PolyForm Noncommercial License 1.0.0（见 [LICENSE](LICENSE)）。

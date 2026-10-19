@@ -2,6 +2,13 @@
 
 > 双仓同步：Gitee https://gitee.com/mzy666666/navicat18-offline-activator ｜ GitHub https://github.com/ma15803216102/navicat18-offline-activator
 
+> **许可**：**PolyForm Noncommercial License 1.0.0**（见 [LICENSE](LICENSE)）——
+> 允许个人学习 / 研究 / 修改 / 非商业分发，**禁止任何商业使用**；商业使用需单独授权。
+> 注意：这**不是** OSI 认可的开源许可（OSI 的开源定义不允许限制使用领域），
+> 准确说法是「源码可见 + 非商业许可（source-available, noncommercial）」。
+>
+> **使用文档**：[docs/使用说明.md](docs/使用说明.md) —— 6 步激活流程、两种方式怎么选、常见问题、补丁状态自检。
+
 一个**不需要登录、不需要联网、不需要服务器**的 Navicat Premium 18 离线激活工具。
 全部签名都在本机完成——因为你用的是**你自己生成的密钥对**。
 
@@ -93,6 +100,9 @@ build\build_offline.cmd
 
 ## 使用
 
+> 完整的用户视角手册（含界面示意、失败排查、卸载还原）见 **[docs/使用说明.md](docs/使用说明.md)**；
+> 下面是速查版。
+
 1. 右键 **以管理员身份运行** `bin\Navicat18Tool-Offline.exe`（写 `Program Files` 需要管理员）；
 2. 选择激活方式：
    - **libcf.dll（默认）**：点【安装补丁】→ 备份并改写 `libcf.dll` / `navicat.exe`；
@@ -144,8 +154,8 @@ navicat18-offline-activator/
 
 - **只支持 Navicat 18**：目标函数序言是版本相关的，换版本需要重新定位特征字节（改 `src/pdata.cs` 的 `_pro`）。
 - **换密钥必须重跑 `gen_payload.py`**：shell 里的模数是编译期写死的，工具不会自动同步。
-- ersion.dll 方式需要自己编译代理 DLL（本仓库不附带成品，原因见上）。
-- 发布包只含 Navicat18Tool-Offline.exe + README.txt + SHA256SUMS.txt（不再单独附带 ersion.dll）：代理 DLL 以 OTP 密文内嵌在 exe 里，需要兜底时由工具自己释放。
+- version.dll 方式需要自己编译代理 DLL（本仓库不附带成品，原因见上）。
+- 发布包只含 Navicat18Tool-Offline.exe + README.txt + SHA256SUMS.txt（不再单独附带 version.dll）：代理 DLL 以 OTP 密文内嵌在 exe 里，需要兜底时由工具自己释放。
 
 - 运行时补丁（内存方式）**不持久**：Navicat 每次重启后都要重新点一次【安装补丁】。
 - 两种方式**互斥**：`libcf.dll` 的文件级补丁会把函数入口改成 `E9` 跳板，此时运行时补丁找不到原序言，
@@ -157,7 +167,12 @@ navicat18-offline-activator/
 
 ---
 
-## 免责声明
+## 许可与免责
 
-本项目仅用于**学习、研究与自有/已授权环境**的兼容性测试。使用者应自行确保其行为符合当地法律与软件许可协议。
-作者不对任何滥用行为负责。
+- **许可**：PolyForm Noncommercial License 1.0.0（见 [LICENSE](LICENSE)）。
+  非商业用途（个人学习、研究、实验、非营利组织内部使用）可以自由使用、修改、分发；
+  **任何商业使用（含内部办公、生产环境、对外服务、付费交付）都需要单独授权**。
+  分发时必须附带本许可原文与 `Required Notice`。
+- **免责**：本项目仅用于**学习、研究与自有/已授权环境**的兼容性测试。
+  Navicat 是 PremiumSoft 的商业软件，请勿用本项目侵犯其著作权或规避商业授权。
+  使用者应自行确保行为符合当地法律与软件许可协议，作者不对任何滥用行为负责。

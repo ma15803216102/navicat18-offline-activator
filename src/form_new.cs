@@ -652,7 +652,8 @@ internal sealed class MainForm : GWindow
             Log("  我们这份把功能转发给系统那个，再在【内存里】替换许可校验 ——");
             Log("  行为与「DLL 劫持」相似，杀软只认特征、分不清意图，所以会拦。");
             Log("  它不联网、不改系统文件、不改 Navicat 磁盘文件；加入信任区即可。");
-            Log("  运行时 version.dll 方式未包含在开源版中，请使用默认的 libcf.dll 文件级补丁。");
+            Log("  注意：version.dll 方式需要先构建代理 DLL（build\\build_proxy.cmd）。");
+            Log("        它不修改 Navicat 的任何文件，官方更新后仍然有效。");
         }
         var th = new System.Threading.Thread(delegate()
         {

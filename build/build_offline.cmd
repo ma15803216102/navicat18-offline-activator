@@ -28,6 +28,11 @@ if not exist src\offline.cs (
   echo      Run:  python tools\gen_offline.py
   exit /b 1
 )
+if not exist src\proxy_data.cs (
+  echo [!!] src\proxy_data.cs missing.
+  echo      Run:  build\build_proxy.cmd   then   python tools\gen_proxy_cs.py
+  exit /b 1
+)
 if not exist bin mkdir bin
 
 "%CSC%" /nologo /target:winexe /win32icon:src\app.ico /optimize+ /define:OFFLINE ^
@@ -36,7 +41,7 @@ if not exist bin mkdir bin
   /r:"%WPFDIR%\UIAutomationTypes.dll" ^
   /out:bin\Navicat18Tool-Offline.exe ^
   src\Navicat18Tool.cs src\lic.cs src\genshin.cs src\form_new.cs src\pdata.cs ^
-  src\uia.cs src\autoact.cs src\offline.cs src\manual.cs src\waitform.cs src\pem_local.cs
+  src\uia.cs src\autoact.cs src\offline.cs src\manual.cs src\waitform.cs src\pem_local.cs src\proxy_data.cs
 
 if errorlevel 1 (
   echo BUILD FAILED

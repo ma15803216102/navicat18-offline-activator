@@ -2,6 +2,7 @@
 keys/
 src/offline.cs
 src/pem_local.cs
+src/proxy_data.cs
 
 # ---- 编译产物 ----
 bin/

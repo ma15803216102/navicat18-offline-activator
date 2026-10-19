@@ -301,8 +301,17 @@ internal static class PePatcher
     /// <summary>代理 DLL 是否已是当前这一份（逐字节比对，避免半截/旧版残留）</summary>
     public static bool IsProxyInstalled(string dir)
     {
-        // 开源版不发布编译好的代理 DLL，因此该方式恒为「未安装」。
-        return false;
+        try
+        {
+            string vd = ProxyPath(dir);
+            if (!File.Exists(vd)) return false;
+            byte[] b = File.ReadAllBytes(vd);
+            byte[] want = ProxyData.GetDll();
+            if (b.Length != want.Length) return false;
+            for (int i = 0; i < b.Length; i++) if (b[i] != want[i]) return false;
+            return true;
+        }
+        catch { return false; }
     }
 
     /// <summary>按当前方式判断补丁是否已经装好</summary>
@@ -331,8 +340,32 @@ internal static class PePatcher
     /// <summary>安装 version.dll 方式（运行时补丁，不修改 Navicat 的任何文件）</summary>
     public static void InstallProxy(string dir, Action<string> log)
     {
-        // 运行时 version.dll 代理需要单独编译代理 DLL（仓库不附带成品）。
-        throw new Exception("开源版不含「运行时 version.dll」方式：请使用默认的 libcf.dll 文件级补丁。");
+        string exe = Path.Combine(dir, "navicat.exe");
+        string libcf = Path.Combine(dir, "libcf.dll");
+        if (!File.Exists(exe) || !File.Exists(libcf))
+            throw new Exception("该目录下没有 navicat.exe / libcf.dll：" + dir);
+
+        // ★ 与文件级补丁互斥：若之前用的是 libcf 方式，先还原回去。
+        //   否则 libcf 里的 .pmod 节会干扰运行时补丁（代理已排除该节，但还原更干净）。
+        if (HasPmod(libcf) || VerifyPem(exe))
+        {
+            log("检测到已安装的 libcf 文件级补丁，先还原 Navicat 原始文件…");
+            Uninstall(dir, log);
+        }
+
+        KillNavicat(log);
+
+        byte[] dll = ProxyData.GetDll();
+        string vd = ProxyPath(dir);
+        WriteAllBytesRetry(vd, dll, log);
+        log("已释放代理 " + ProxyFileName + "（" + dll.Length + " 字节）");
+
+        // 回读校验：确认写进去的就是这一份（写失败会让补丁完全无效却看不出来）
+        if (!IsProxyInstalled(dir))
+            throw new Exception("代理 DLL 写入校验失败：" + ProxyFileName + " 内容与预期不一致");
+
+        log("运行方式：不修改 navicat.exe / libcf.dll，由代理在 Navicat 进程内完成补丁。");
+        log("优点：Navicat 官方更新不会移除它（更新只替换它自己的文件）。");
     }
 
     /// <summary>卸载 version.dll 方式</summary>

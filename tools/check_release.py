@@ -42,7 +42,7 @@ def load_d():
 
 
 def check_binary(dbytes):
-    for exe in glob.glob(os.path.join(ROOT, 'bin', '*.exe')):
+    for exe in glob.glob(os.path.join(ROOT, 'bin', '*.exe')) + glob.glob(os.path.join(ROOT, 'bin', '*.dll')):
         raw = open(exe, 'rb').read()
         if dbytes in raw:
             problems.append('私钥指数 D 出现在二进制里：%s' % os.path.relpath(exe, ROOT))
@@ -76,7 +76,7 @@ def check_gitignore():
     if not os.path.isdir(os.path.join(ROOT, '.git')):
         print('[i] 还不是 git 仓库，跳过 .gitignore 校验')
         return
-    for rel in ('keys/mykey_priv.pem', 'src/offline.cs', 'src/pem_local.cs'):
+    for rel in ('keys/mykey_priv.pem', 'src/offline.cs', 'src/pem_local.cs', 'src/proxy_data.cs'):
         p = os.path.join(ROOT, rel.replace('/', os.sep))
         if not os.path.exists(p):
             continue

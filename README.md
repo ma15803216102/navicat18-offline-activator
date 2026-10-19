@@ -14,13 +14,13 @@
 
 支持两种补丁方式：
 
-| | `libcf.dll`（文件级，默认） | `version.dll`（运行时） |
+| | `libcf.dll`（文件级，默认） | `version.dll`（代理 DLL） |
 |---|---|---|
-| 原理 | 给 `libcf.dll` 新增 `.pmod` 节 + 改函数入口跳板 | 放一个代理 DLL，在 Navicat 进程内改内存 |
-| 是否改 Navicat 文件 | **是**（`libcf.dll` + `navicat.exe` 的公钥） | **否**（直接改运行中进程的内存） |
+| 原理 | 给 `libcf.dll` 新增 `.pmod` 节 + 改函数入口跳板 | 在安装目录放一个代理 DLL，由加载器在启动时读入、在进程内打补丁 |
+| 是否改 Navicat 文件 | **是**（`libcf.dll` + `navicat.exe` 的公钥） | **否**（只多一个 `version.dll`） |
 | 官方更新后 | 被覆盖，需重装 | 仍然有效 |
 | 额外依赖 | 无 | 需要用 MinGW 编译代理 DLL（仓库不附带成品） |
-| 磁盘残留 | 补丁 DLL + `.orig` 备份 | **无**（内存补丁不生成任何文件；仅当 Navicat 未运行时才临时落盘兜底） |
+| 磁盘残留 | 补丁 DLL + `.orig` 备份 | 一个 `version.dll`（常驻，卸载时删除） |
 | 卸载 | 拷回 `.orig` | 删掉 `version.dll` |
 
 > ⚠️ 仅供学习研究、自有软件与已授权环境的兼容性测试使用。
@@ -106,10 +106,9 @@ build\build_offline.cmd
 1. 右键 **以管理员身份运行** `bin\Navicat18Tool-Offline.exe`（写 `Program Files` 需要管理员）；
 2. 选择激活方式：
    - **libcf.dll（默认）**：点【安装补丁】→ 备份并改写 `libcf.dll` / `navicat.exe`；
-   - **version.dll / 内存补丁**：点【安装补丁】→ 如果 Navicat 正在运行，工具**直接改目标进程内存**
-     （OpenProcess + ReadProcessMemory/WriteProcessMemory，不生成、不修改任何文件）；
-     只有 Navicat 没在运行时，才退化为「临时释放 `version.dll` → 加载后改名 + 登记重启删除」。
-     **注意：每次重启 Navicat 后要重新点一次【安装补丁】**（内存补丁不持久）。
+   - **version.dll（代理 DLL）**：点【安装补丁】→ 若 Navicat 正在运行会先把它关掉，
+     然后在安装目录释放 `version.dll`；它常驻在那里，**以后每次启动 Navicat 都会自动加载**
+     完成补丁，不需要重复安装。
 3. 启动 Navicat → 【帮助】→【注册】；
 4. 按住 **Ctrl+Shift** 点【激活】→「手动激活」窗口，复制**请求码**；
 5. 回工具：粘贴请求码、填邮箱/公司 → 生成**激活码**；
@@ -131,7 +130,7 @@ navicat18-offline-activator/
 │  ├─ genshin.cs / uia.cs / waitform.cs   自绘 UI 与窗口自动化
 │  ├─ pdata.cs             内嵌载荷（.pmod shell、函数序言特征）
 │  ├─ lic.cs               离线版授权桩（不做登录/联网校验）
-│  ├─ version_proxy.c      version.dll 代理源码（运行时补丁）
+│  ├─ version_proxy.c      version.dll 代理源码
 │  └─ NavicatPatch.cs      命令行补丁工具（可选）
 ├─ tools/
 │  ├─ gen_keys.py          生成密钥对 → keys/ + src/pem_local.cs
@@ -143,8 +142,9 @@ navicat18-offline-activator/
 ├─ build/
 │  ├─ build_proxy.cmd      编译 bin/version.dll
 │  └─ build_offline.cmd    编译 bin/Navicat18Tool-Offline.exe
-├─ docs/原理.md              原理（请求码/激活码模型、补丁机制、运行时补丁）
+├─ docs/原理.md              原理（请求码/激活码模型、补丁机制、代理 DLL）
 ├─ docs/使用说明.md          用户手册（6 步流程、两种方式对比、常见问题、状态自检）
+├─ docs/软件分享-原创文章.md  对外发布的分享文
 ├─ keys/                   （git-ignored）
 └─ bin/                    （git-ignored）
 ```
@@ -156,10 +156,10 @@ navicat18-offline-activator/
 - **只支持 Navicat 18**：目标函数序言是版本相关的，换版本需要重新定位特征字节（改 `src/pdata.cs` 的 `_pro`）。
 - **换密钥必须重跑 `gen_payload.py`**：shell 里的模数是编译期写死的，工具不会自动同步。
 - version.dll 方式需要自己编译代理 DLL（本仓库不附带成品，原因见上）。
-- 发布包只含 Navicat18Tool-Offline.exe + README.txt + SHA256SUMS.txt（不再单独附带 version.dll）：代理 DLL 以 OTP 密文内嵌在 exe 里，需要兜底时由工具自己释放。
+- 发布包只含 Navicat18Tool-Offline.exe + README.txt + SHA256SUMS.txt（不再单独附带 version.dll）：代理 DLL 以 OTP 密文内嵌在 exe 里，安装补丁时由工具释放到 Navicat 目录。
 
-- 运行时补丁（内存方式）**不持久**：Navicat 每次重启后都要重新点一次【安装补丁】。
-- 两种方式**互斥**：`libcf.dll` 的文件级补丁会把函数入口改成 `E9` 跳板，此时运行时补丁找不到原序言，
+- `version.dll` 代理方式会在安装目录**常驻一个 `version.dll`**，由 Navicat 启动时加载；卸载补丁时删除。
+- 两种方式**互斥**：`libcf.dll` 的文件级补丁会把函数入口改成 `E9` 跳板，此时代理 DLL 找不到原序言，
   会明确报「没找到函数序言」。要切换方式，先卸载当前补丁（工具里的【卸载补丁】）。
 - 兜底的 `version.dll` 文件在被 Navicat 加载后无法删除（Windows 会拒绝 DeleteFile），
   只能改名成 `~nvp_*.tmp` 并登记重启后删除。

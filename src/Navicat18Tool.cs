@@ -1,4 +1,4 @@
-﻿/* Navicat 18 激活工具（GUI，C# / .NET Framework 4.x）
+/* Navicat 18 激活工具（GUI，C# / .NET Framework 4.x）
  *
  * 一个程序搞定两件事：
  *   ① 安装/卸载补丁（给 libcf.dll 就地打补丁 + 替换 navicat.exe 的请求码公钥）
@@ -337,23 +337,20 @@ internal static class PePatcher
         return killed;
     }
 
-    /// <summary>安装 version.dll 方式（运行时补丁，不修改 Navicat 的任何文件）</summary>
+    /// <summary>安装 version.dll 方式（代理 DLL 在 Navicat 进程内打补丁，不修改 Navicat 的任何文件）</summary>
     public static void InstallProxy(string dir, Action<string> log)
     {
-        // ★ 首选：Navicat 已经在运行 → 直接对目标进程做内存补丁，**不写任何文件**。
+        // 代理 DLL 只在 Navicat **启动时**由加载器读入；Navicat 已经跑起来的话，本次安装对它无效。
+        // 所以先把运行中的 Navicat 关掉，让代理就位，再由用户重新打开。
         uint pid = 0;
         try { pid = AutoAct.FirstNavicatPid(); } catch { }
         if (pid != 0)
         {
-            log("检测到 Navicat 正在运行（pid=" + pid + "）→ 直接内存补丁（不落盘）");
-            string err = RuntimePatch.Apply((int)pid, log);
-            if (string.IsNullOrEmpty(err))
-            {
-                log("✔ 运行时补丁完成：没有生成 / 修改任何 version.dll 文件");
-                return;
-            }
-            log("运行时补丁未完成：" + err);
-            log("（回退到 version.dll 方式：先释放文件，Navicat 加载后自动改名/删除）");
+            log("检测到 Navicat 正在运行（pid=" + pid + "）");
+            log("代理 DLL 只会在打开 Navicat 时被加载——先把它关掉，等补丁放好后重新打开才会生效。");
+            int n = KillNavicat(log);
+            if (n > 0) log("已关闭运行中的 Navicat（" + n + " 个进程），等文件解锁…");
+            System.Threading.Thread.Sleep(800);
         }
 
         byte[] dll = ProxyData.GetDll();
@@ -365,9 +362,8 @@ internal static class PePatcher
         if (!IsProxyInstalled(dir))
             throw new Exception("代理 DLL 写入校验失败：" + PePatcher.ProxyFileName + " 内容与预期不一致");
 
-        log("已按需释放代理 " + PePatcher.ProxyFileName + "（" + dll.Length + " 字节）；"
-            + "Navicat 加载后会自动从磁盘删除");
-        ProxyWatch.Start(dir, log);
+        log("已释放代理 " + PePatcher.ProxyFileName + "（" + dll.Length + " 字节），常驻在安装目录；");
+        log("以后每次启动 Navicat 都会自动加载它完成补丁，不需要重复安装。");
     }
 
     /// <summary>卸载 version.dll 方式</summary>

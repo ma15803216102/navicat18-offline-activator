@@ -144,7 +144,9 @@ navicat18-offline-activator/
 
 - **只支持 Navicat 18**：目标函数序言是版本相关的，换版本需要重新定位特征字节（改 `src/pdata.cs` 的 `_pro`）。
 - **换密钥必须重跑 `gen_payload.py`**：shell 里的模数是编译期写死的，工具不会自动同步。
-- `version.dll` 方式需要自己编译代理 DLL（本仓库不附带成品，原因见上）。
+- ersion.dll 方式需要自己编译代理 DLL（本仓库不附带成品，原因见上）。
+- 发布包只含 Navicat18Tool-Offline.exe + README.txt + SHA256SUMS.txt（不再单独附带 ersion.dll）：代理 DLL 以 OTP 密文内嵌在 exe 里，需要兜底时由工具自己释放。
+
 - 运行时补丁（内存方式）**不持久**：Navicat 每次重启后都要重新点一次【安装补丁】。
 - 两种方式**互斥**：`libcf.dll` 的文件级补丁会把函数入口改成 `E9` 跳板，此时运行时补丁找不到原序言，
   会明确报「没找到函数序言」。要切换方式，先卸载当前补丁（工具里的【卸载补丁】）。

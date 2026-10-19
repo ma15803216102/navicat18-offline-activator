@@ -28,6 +28,14 @@ if not exist src\offline.cs (
   echo      Run:  python tools\gen_offline.py
   exit /b 1
 )
+rem ---- the .pmod shell must carry YOUR modulus, otherwise your own codes will not verify ----
+python tools\gen_payload.py --check
+if errorlevel 1 (
+  echo [!!] src\pdata.cs shell modulus does not match keys\mykey_pub.pem
+  echo      Run:  python tools\gen_payload.py
+  exit /b 1
+)
+
 if not exist src\proxy_data.cs (
   echo [!!] src\proxy_data.cs missing.
   echo      Run:  build\build_proxy.cmd   then   python tools\gen_proxy_cs.py

@@ -82,7 +82,9 @@ build\build_offline.cmd
 - `pem_local.cs` = 你的公钥；
 - `proxy_data.cs` = **用你的公钥编译出来的** `version.dll`（若提交到仓库，别人拿到的会是绑死你公钥的 DLL，对他们无用）。
 
-所以仓库里不含任何人的密钥，也不含编译好的代理 DLL。
+所以仓库里不含任何人的**私钥**，也不含编译好的代理 DLL。
+
+> `src/pdata.cs` 里保留了生成时的公钥模数（仅用于验签，公开无妨）。换密钥后必须重跑 `gen_payload.py`；`build_offline.cmd` 会先做 `--check`，不匹配直接终止，避免编译出「验不过自己的码」的 exe。
 
 ---
 

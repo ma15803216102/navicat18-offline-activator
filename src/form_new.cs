@@ -1,4 +1,4 @@
-﻿/* form_new.cs —— 精简版主界面（步骤化引导 + 剪贴板自动识别 + 注册表定位）
+/* form_new.cs —— 精简版主界面（步骤化引导 + 剪贴板自动识别 + 注册表定位）
  * 只保留最少文字：按钮=数字+短词，标签在文本框左侧且宽度足够，绝不遮挡。
  */
 using System;
@@ -597,6 +597,24 @@ internal sealed class MainForm : GWindow
     /// 注意：GButton 是自绘控件，改 Text 后必须显式 Invalidate 才会重绘。</summary>
     private void ToggleMode(object s, EventArgs e)
     {
+        // 只有内嵌了真正的代理 DLL 才能切到 version.dll 方式；
+        // 否则（构建机上没有 MinGW）装进 Navicat 目录的会是一个不可用的空 DLL。
+        if (PePatcher.Mode == PePatcher.PatchMode.Libcf && !ProxyData.Available)
+        {
+            Log("⚠️ 这个 exe 没有内嵌代理 DLL，无法使用【version.dll】方式。");
+            Log("   原因：构建这个 exe 的机器上没有 MinGW gcc，代理 DLL 编译不出来。");
+            Log("   请继续用【libcf.dll】方式（两种方式的激活效果相同）。");
+            Log("   要用 version.dll 方式：在装了 MinGW 的机器上重跑 build\\build_offline.cmd，");
+            Log("   脚本会自动编译代理 DLL 并内嵌进来。");
+            MessageBox.Show(this,
+                "这个 exe 没有内嵌代理 DLL，无法使用【version.dll】方式。\n\n" +
+                "请继续使用【libcf.dll】方式（两种方式的激活效果相同）。\n\n" +
+                "要用 version.dll 方式：在装了 MinGW-w64 的机器上重新运行\n" +
+                "build\\build_offline.cmd —— 脚本会自动编译并内嵌代理 DLL。",
+                "该方式不可用", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
         PePatcher.Mode = PePatcher.Mode == PePatcher.PatchMode.Libcf
             ? PePatcher.PatchMode.VersionDll
             : PePatcher.PatchMode.Libcf;
@@ -652,7 +670,8 @@ internal sealed class MainForm : GWindow
             Log("  我们这份把功能转发给系统那个，再在【内存里】替换许可校验 ——");
             Log("  行为与「DLL 劫持」相似，杀软只认特征、分不清意图，所以会拦。");
             Log("  它不联网、不改系统文件、不改 Navicat 磁盘文件；加入信任区即可。");
-            Log("  注意：version.dll 方式需要先构建代理 DLL（build\\build_proxy.cmd）。");
+            Log("  注意：version.dll 方式的代理 DLL 是构建时内嵌进 exe 的（build\\build_offline.cmd 自动编译）；");
+            Log("        这个 exe 里没有代理 DLL 时，切换方式会被拒绝。");
             Log("        它不修改 Navicat 的任何文件，官方更新后仍然有效。");
         }
         var th = new System.Threading.Thread(delegate()

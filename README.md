@@ -61,6 +61,7 @@ Navicat 的「手动激活」是标准的 **请求码 ↔ 激活码** 模型：
 - Python 3，以及下面任意一样用于生成密钥：
   - Python 的 `cryptography` 库，**或** `openssl`（Git for Windows 自带）
 - （仅 `version.dll` 方式需要）MinGW-w64 的 `gcc`，默认路径 `D:\dev\mingw64\bin\gcc.exe`，可用 `set GCC=...` 覆盖
+  （`build\build_proxy.cmd` 会自动把 gcc 所在目录加入 PATH —— gcc 依赖同目录下的 DLL，只设 `GCC` 变量不够）
 
 ---
 
@@ -76,14 +77,45 @@ python tools\gen_payload.py
 :: 3) 用私钥生成离线签发实现 → src\offline.cs
 python tools\gen_offline.py
 
-:: 4) 编译运行时代理（仅 version.dll 方式需要）→ bin\version.dll
-build\build_proxy.cmd
-
-:: 5) 把代理 DLL 转成可内嵌的字节数组 → src\proxy_data.cs
-python tools\gen_proxy_cs.py
-
-:: 6) 编译主程序 → bin\Navicat18Tool-Offline.exe
+:: 4) 编译主程序 → bin\Navicat18Tool-Offline.exe
 build\build_offline.cmd
+```
+
+**第 4 步会自动处理 version.dll 方式的代理 DLL**（编译 → 转成内嵌字节数组），
+所以**不需要**再手工执行 `build\build_proxy.cmd` / `python tools\gen_proxy_cs.py`
+（这两个脚本仍然保留，想单独调试代理时可以直接跑）。
+
+三种情况它自己会判断：
+
+| 机器状态 | 结果 |
+|---|---|
+| 有 MinGW gcc、`src\proxy_data.cs` 不存在 | 自动编译代理并内嵌 → 两种方式都可用 |
+| 已内嵌过（`src\proxy_data.cs` 正常） | 直接用，不重复编译 |
+| **没有 MinGW gcc**（或代理编译失败） | 退回「无代理」占位实现，**照样构建成功**；这个 exe 只能用 `libcf.dll` 方式，界面上切换 `version.dll` 会被明确拒绝并说明原因 |
+
+> 构建完可以自查这个 exe 支持哪些方式：
+>
+> ```bat
+> bin\Navicat18Tool-Offline.exe --modes
+> :: 输出 %TEMP%\nvmode.txt
+> ::   PROXY|available|len=49454|...        → 两种方式都可用
+> ::   PROXY|unavailable|len=0|...          → 只能用 libcf.dll
+> ```
+
+**关于 gcc 的 PATH（以前最容易踩的坑）**
+
+`build_proxy.cmd` 支持 `set GCC=C:\path\to\gcc.exe`，但**只设这个变量以前是不够的**：
+`gcc.exe` 自己要加载同目录下的 `libisl-*.dll` / `libmpc-*.dll` / `libwinpthread-1.dll`，
+而 Windows 是按 **PATH** 找这些 DLL 的（不是按 exe 所在目录）——MinGW 的 `bin` 不在 PATH 里时，
+gcc 会**以退出码 1 静默失败、一个字都不打印**，看起来像"构建莫名失败"。
+
+现在脚本会自己把 gcc 所在目录加进 PATH，并在编译前先跑一次 `gcc --version` 做自检；
+真的缺东西时会把 gcc 的报错原样打出来。想手工验证：
+
+```bat
+set GCC=C:\path\to\mingw64\bin\gcc.exe
+build\build_proxy.cmd
+:: 期望最后一行： BUILD OK  ->  bin\version.dll
 ```
 
 `src\offline.cs`、`src\pem_local.cs`、`src\proxy_data.cs` 都是**本机生成物**（已在 `.gitignore`）：
@@ -138,6 +170,7 @@ navicat18-offline-activator/
 │  ├─ gen_offline.py       用私钥生成 src/offline.cs
 │  ├─ gen_proxy_h.py       生成 proxy_data.h（编译代理用）
 │  ├─ gen_proxy_cs.py      把 version.dll 转成 src/proxy_data.cs
+│  ├─ gen_proxy_stub.py    src/proxy_data.cs 的最小占位实现（没有 MinGW 时用）
 │  └─ check_release.py     发布前自检（私钥是否泄露 / 服务端地址残留）
 ├─ build/
 │  ├─ build_proxy.cmd      编译 bin/version.dll
@@ -154,7 +187,8 @@ navicat18-offline-activator/
 
 - **只支持 Navicat 18**：目标函数序言是版本相关的，换版本需要重新定位特征字节（改 `src/pdata.cs` 的 `_pro`）。
 - **换密钥必须重跑 `gen_payload.py`**：shell 里的模数是编译期写死的，工具不会自动同步。
-- version.dll 方式需要自己编译代理 DLL（本仓库不附带成品，原因见上）。
+- 本仓库不附带成品 `version.dll`：`build\build_offline.cmd` 会用本机 MinGW 现场编译并内嵌；
+  机器上没有 MinGW 时该方式自动停用（`--modes` 会报 `PROXY|unavailable`），`libcf.dll` 方式不受影响。
 - 发布包只含 Navicat18Tool-Offline.exe + README.txt + SHA256SUMS.txt（不再单独附带 version.dll）：代理 DLL 以 OTP 密文内嵌在 exe 里，安装补丁时由工具释放到 Navicat 目录。
 
 - `version.dll` 代理方式会在安装目录**常驻一个 `version.dll`**，由 Navicat 启动时加载；卸载补丁时删除。

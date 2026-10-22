@@ -66,7 +66,8 @@ internal static class Program
             (args[0] == "--uishot" || args[0] == "--lic" ||
              args[0] == "--devid" || args[0] == "--vfyfile" ||
               args[0] == "--winscan" || args[0] == "--dlgtest" ||
-              args[0] == "--mediumtest" || args[0] == "--offline");
+              args[0] == "--mediumtest" || args[0] == "--offline" ||
+              args[0] == "--modes");
         bool tried = args != null && Array.IndexOf(args, "--elevated") >= 0;   // 防无限重启
         if (!selftest && !tried && !IsAdmin())
         {
@@ -206,6 +207,24 @@ internal static class Program
             catch (Exception ex) { File.WriteAllText(path, "LOAD_ERR " + ex.GetType().Name + " " + ex.Message); }
             return;
         }
+        // 隐藏自检：这个 exe 支持哪些激活方式（构建环境不同，内嵌的代理 DLL 可能没有）。
+        //   用法: Navicat18Tool.exe --modes  -> %TEMP%\nvmode.txt
+        //   输出：PROXY|available|len=<n>|sha256=<hash>   或   PROXY|unavailable|...
+        //   用途：构建脚本/回归测试据此判断「这个 exe 能否用 version.dll 方式」。
+        if (args != null && args.Length >= 1 && args[0] == "--modes")
+        {
+            string mpath = Path.Combine(Path.GetTempPath(), "nvmode.txt");
+            try
+            {
+                string line = "PROXY|" + (ProxyData.Available ? "available" : "unavailable")
+                    + "|len=" + ProxyData.Len
+                    + "|sha256=" + (string.IsNullOrEmpty(ProxyData.Sha256) ? "(none)" : ProxyData.Sha256)
+                    + "|gets=" + ProxyData.GetDll().Length;
+                File.WriteAllText(mpath, line);
+            }
+            catch (Exception ex) { File.WriteAllText(mpath, "MODES_ERR " + ex.GetType().Name + " " + ex.Message); }
+            return;
+        }
         // 隐藏自检：输出本机设备码（供自动化测试构造合法 lic.bin 用，正常使用不受影响）
         if (args != null && args.Length >= 1 && args[0] == "--devid")
         {
@@ -301,6 +320,8 @@ internal static class PePatcher
     /// <summary>代理 DLL 是否已是当前这一份（逐字节比对，避免半截/旧版残留）</summary>
     public static bool IsProxyInstalled(string dir)
     {
+        // 占位实现（构建机上没有 MinGW）= 没有可用的代理 DLL，恒判「未安装」
+        if (!ProxyData.Available) return false;
         try
         {
             string vd = ProxyPath(dir);
@@ -340,6 +361,13 @@ internal static class PePatcher
     /// <summary>安装 version.dll 方式（代理 DLL 在 Navicat 进程内打补丁，不修改 Navicat 的任何文件）</summary>
     public static void InstallProxy(string dir, Action<string> log)
     {
+        // 这个 exe 编译时没有内嵌代理 DLL（构建机上缺 MinGW gcc）：
+        // 与其写一个 0 字节的 version.dll 让 Navicat 起不来，不如明确报错。
+        if (!ProxyData.Available)
+            throw new Exception("这个 exe 没有内嵌代理 DLL（构建机上没有 MinGW gcc），"
+                + "无法使用 version.dll 方式。请改用 libcf.dll 方式，"
+                + "或在装了 MinGW 的机器上重新构建（build\\build_offline.cmd 会自动编译代理）。");
+
         // 代理 DLL 只在 Navicat **启动时**由加载器读入；Navicat 已经跑起来的话，本次安装对它无效。
         // 所以先把运行中的 Navicat 关掉，让代理就位，再由用户重新打开。
         uint pid = 0;

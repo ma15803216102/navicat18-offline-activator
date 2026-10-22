@@ -58,10 +58,11 @@ Navicat 的「手动激活」是标准的 **请求码 ↔ 激活码** 模型：
 
 - Windows 10 / 11 x64
 - .NET Framework 4.x（系统自带 `csc.exe`，无需 SDK）
-- Python 3，以及下面任意一样用于生成密钥：
-  - Python 的 `cryptography` 库，**或** `openssl`（Git for Windows 自带）
-- （仅 `version.dll` 方式需要）MinGW-w64 的 `gcc`，默认路径 `D:\dev\mingw64\bin\gcc.exe`，可用 `set GCC=...` 覆盖
-  （`build\build_proxy.cmd` 会自动把 gcc 所在目录加入 PATH —— gcc 依赖同目录下的 DLL，只设 `GCC` 变量不够）
+- Python 3（需要 `cryptography` 库，或 `openssl`——Git for Windows 自带）
+- （可选，仅 `version.dll` 方式需要）MinGW-w64 的 `gcc`：
+  装好即可（`winget install -e --id BrechtSanders.WinLibs.POSIX.UCRT`），或用 `set GCC=C:\mingw64\bin\gcc.exe` 指定；
+  **不需要**手动把 MinGW 加进系统 PATH——脚本会自己把 gcc 所在目录加进 PATH 并自检
+- 脚本会自动找 `python`（PATH → `py -3` → 常见安装目录）；找不到时用 `set PYTHON=C:\Python313\python.exe` 指定
 
 ---
 
@@ -82,8 +83,8 @@ build\build_offline.cmd
 ```
 
 **第 4 步会自动处理 version.dll 方式的代理 DLL**（编译 → 转成内嵌字节数组），
-所以**不需要**再手工执行 `build\build_proxy.cmd` / `python tools\gen_proxy_cs.py`
-（这两个脚本仍然保留，想单独调试代理时可以直接跑）。
+所以**不需要**先手工执行 `build\build_proxy.cmd`，也**不需要**手工跑 `python tools\gen_proxy_cs.py`
+（这两个脚本保留着，想单独调试代理时可以直接跑）。
 
 三种情况它自己会判断：
 
@@ -101,6 +102,21 @@ build\build_offline.cmd
 > ::   PROXY|available|len=49454|...        → 两种方式都可用
 > ::   PROXY|unavailable|len=0|...          → 只能用 libcf.dll
 > ```
+
+**构建报错对照**
+
+先照上面 4 步跑；报错基本就这几类：
+
+| 报错 | 原因 / 处理 |
+|---|---|
+| `'python' is not recognized` | Python 没进 PATH。`set PYTHON=C:\Python313\python.exe` 后重跑（脚本也会试 `py -3` 与常见安装目录） |
+| `FAILED: tools\gen_proxy_h.py` | 缺 `cryptography`：`python -m pip install cryptography` |
+| `[!!] gcc.exe not found` | 没装 MinGW，或装了但不在 PATH。`set GCC=C:\mingw64\bin\gcc.exe` 后重跑 |
+| `[proxy] version.dll could NOT be built` | 上一条的后果：exe 照样构建成功，但只有 `libcf.dll` 一种方式；装好 gcc 后重跑即可 |
+| `BUILD FAILED: gcc could not compile ...` | gcc 能跑但编译失败，脚本会把 gcc 原始报错打出来 |
+| `[!!] src\pdata.cs shell modulus does not match ...` | 换过密钥没重跑 `python tools\gen_payload.py` |
+
+> 只想单独构建代理 DLL 看详细输出：直接跑 `build\build_proxy.cmd`（支持 `set GCC=` 绝对/相对路径、带不带引号都行）。
 
 **关于 gcc 的 PATH（以前最容易踩的坑）**
 

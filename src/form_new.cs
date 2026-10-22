@@ -17,6 +17,18 @@ internal sealed class MainForm : GWindow
 {
     private GTextBox txtDir, txtEmail, txtCompany, txtLog;
     private Label lblStep;
+    // 用户手动选过/改过目录后，自动探测就不得再覆盖它
+    // （装了 Navicat 17 + 18 时，注册表里两代都在，自动探测很容易拿到 17）
+    private bool dirUserSet;
+    private bool dirSettingInternally;
+
+    /// <summary>程序自己设置目录（不会把 dirUserSet 置真）</summary>
+    private void SetDir(string d)
+    {
+        dirSettingInternally = true;
+        try { txtDir.Text = d ?? ""; }
+        finally { dirSettingInternally = false; }
+    }
     private int gLastPct = -1;
     private GButton btnMode;
 
@@ -30,6 +42,8 @@ internal sealed class MainForm : GWindow
 
         Label("目录", 24, 84);
         txtDir = Box(24, 106, 520, false);
+        // 用户手打/粘贴目录也算"已手动指定"，此后自动探测不得覆盖
+        txtDir.TextChanged += delegate { if (!dirSettingInternally) dirUserSet = true; };
         Btn("选择目录", 556, 107, 180, PickDir);
 
         Label("邮箱", 24, 158);
@@ -81,7 +95,7 @@ internal sealed class MainForm : GWindow
 
         Log("Navicat 18 激活工具已就绪。");
         // 目录：注册表优先
-        txtDir.Text = FindNavicat();
+        SetDir(FindNavicat());
         Log("已定位程序目录。");
         CheckDir(true);
         // 倒计时显示已按要求移除（离线版不展示到期时间）
@@ -221,8 +235,30 @@ internal sealed class MainForm : GWindow
     }
 
     // ---------------------------------------------------------- ② 目录
-    private static string FindNavicat()
+    /// <summary>
+    /// 自动定位 Navicat 安装目录。
+    /// 注意：装了 17 和 18 两代时，注册表里 App Paths 与 Uninstall 两条记录都会存在，
+    /// 直接取"第一个命中"很容易拿到 17（用户反馈就是这个问题）。所以这里先把所有候选
+    /// 收集起来，再按"版本是不是 18"打分排序，取最像 18 的那个。
+    /// </summary>
+    /// <summary>收集所有可能的 Navicat 安装目录（App Paths + Uninstall 两处注册表；extra 供 --dir 自检注入）</summary>
+    internal static List<string> CollectNavicatDirs(string[] extra = null)
     {
+        var cands = new List<string>();
+
+        Action<string> add = delegate(string dir)
+        {
+            if (string.IsNullOrEmpty(dir)) return;
+            dir = dir.Trim().Trim('"');
+            if (dir.Length == 0) return;
+            try { dir = Path.GetFullPath(dir); } catch { }
+            // InstallLocation 常带结尾反斜杠（如 "...\Navicat Premium 18\"），统一去掉
+            dir = dir.TrimEnd('\\', '/');
+            if (dir.Length == 0) return;
+            if (!File.Exists(Path.Combine(dir, "navicat.exe"))) return;
+            if (!cands.Contains(dir)) cands.Add(dir);
+        };
+
         string[] appPaths = {
             @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\navicat.exe",
             @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\navicat.exe"
@@ -235,7 +271,7 @@ internal sealed class MainForm : GWindow
                     {
                         if (k == null) continue;
                         string v = Convert.ToString(k.GetValue(""));
-                        if (!string.IsNullOrEmpty(v) && File.Exists(v)) return Path.GetDirectoryName(v);
+                        if (!string.IsNullOrEmpty(v)) add(Path.GetDirectoryName(v));
                     }
                 }
                 catch { }
@@ -256,16 +292,101 @@ internal sealed class MainForm : GWindow
                             {
                                 if (sk == null) continue;
                                 string dn = Convert.ToString(sk.GetValue("DisplayName"));
-                                string loc = Convert.ToString(sk.GetValue("InstallLocation"));
-                                if (dn != null && dn.IndexOf("Navicat", StringComparison.OrdinalIgnoreCase) >= 0
-                                    && !string.IsNullOrEmpty(loc) && File.Exists(Path.Combine(loc, "navicat.exe")))
-                                    return loc;
+                                if (dn == null || dn.IndexOf("Navicat", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                                add(Convert.ToString(sk.GetValue("InstallLocation")));
+                                // 有的安装包只写 UninstallString（带引号的 exe 路径）
+                                string us = Convert.ToString(sk.GetValue("UninstallString"));
+                                if (!string.IsNullOrEmpty(us))
+                                    try { add(Path.GetDirectoryName(us.Trim().Trim('"'))); } catch { }
                             }
                     }
                 }
                 catch { }
 
-        return @"C:\Program Files\Navicat\Navicat Premium 18";
+        if (extra != null) foreach (string e in extra) add(e);
+
+        return cands;
+    }
+
+    /// <summary>给候选目录打分：exe 文件版本最硬，其次看路径里的 18 / 17 字样</summary>
+    internal static int ScoreDir(string dir)
+    {
+        int sc = 0;
+        string exe = Path.Combine(dir, "navicat.exe");
+        try
+        {
+            var vi = FileVersionInfo.GetVersionInfo(exe);
+            int major = vi.FileMajorPart > 0 ? vi.FileMajorPart : vi.ProductMajorPart;
+            if (major >= 18) sc += 200;
+            else if (major == 17) sc -= 200;
+            else if (major > 0) sc += major * 5;
+        }
+        catch { }
+        string s = dir.ToLowerInvariant();
+        if (s.IndexOf("premium 18") >= 0 || s.IndexOf("navicat18") >= 0) sc += 80;
+        else if (Regex.IsMatch(s, @"(^|[^0-9])18([^0-9]|$)")) sc += 40;
+        if (s.IndexOf("premium 17") >= 0 || s.IndexOf("navicat17") >= 0) sc -= 80;
+        else if (Regex.IsMatch(s, @"(^|[^0-9])17([^0-9]|$)")) sc -= 40;
+        return sc;
+    }
+
+    internal static string FindNavicat()
+    {
+        var cands = CollectNavicatDirs(null);
+        if (cands.Count == 0) return @"C:\Program Files\Navicat\Navicat Premium 18";
+        cands.Sort(delegate(string a, string b) { return ScoreDir(b).CompareTo(ScoreDir(a)); });
+        return cands[0];
+    }
+
+    /// <summary>--dir 自检：列出全部候选、得分与选中项（排查"选错成 17"用）</summary>
+    internal static string NavicatProbeReport(string[] extra = null)
+    {
+        var cands = CollectNavicatDirs(extra);
+        string picked = FindNavicat();
+        var sb = new StringBuilder();
+        foreach (string d in cands)
+        {
+            string ver = "";
+            try { ver = (FileVersionInfo.GetVersionInfo(Path.Combine(d, "navicat.exe")).FileVersion ?? "").Trim(); } catch { }
+            sb.Append(ScoreDir(d).ToString().PadLeft(5)).Append("  ").Append(d)
+              .Append("  (版本 ").Append(ver.Length == 0 ? "未知" : ver).Append(")")
+              .Append(string.Equals(d, picked, StringComparison.OrdinalIgnoreCase) ? "   <- 选中" : "")
+              .AppendLine();
+        }
+        if (cands.Count == 0) sb.AppendLine("(注册表里没有任何 Navicat 安装记录，落到默认路径)");
+        sb.AppendLine("PICKED: " + picked);
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// 只在"用户没手动指定、且当前填的目录无效"时才自动重新探测。
+    /// 以前在【安装补丁】/【开始激活】里无条件执行 FindNavicat() 覆盖，用户手填的
+    /// 18 路径会被探测结果（17）改回去 —— 这就是反馈里的现象。
+    /// </summary>
+    private void RefreshDirIfAuto()
+    {
+        if (dirUserSet) return;
+        string cur = (txtDir.Text ?? "").Trim().Trim('"');
+        if (cur.Length > 0 && File.Exists(Path.Combine(cur, "navicat.exe"))) return;
+        string d = FindNavicat();
+        if (!string.IsNullOrEmpty(d)) SetDir(d);
+    }
+
+    /// <summary>把当前目录的 Navicat 版本写进日志，便于确认改的是 17 还是 18</summary>
+    private void LogDirVersion(string dir)
+    {
+        try
+        {
+            string exe = Path.Combine(dir, "navicat.exe");
+            if (!File.Exists(exe)) return;
+            var vi = FileVersionInfo.GetVersionInfo(exe);
+            string v = (vi.FileVersion ?? "").Trim();
+            if (v.Length == 0) return;
+            Log("  目标： " + exe + "  版本 " + v);
+            if (vi.FileMajorPart == 17 && vi.FileMajorPart > 0)
+                Log("  ※ 这是 Navicat 17 的目录。本工具只处理 18，请改成 18 的安装目录。");
+        }
+        catch { }
     }
 
     private bool Admin()
@@ -517,10 +638,10 @@ internal sealed class MainForm : GWindow
                         }
                         catch { }
                     }
-                    if (found != null) { string fd = found; Ui(() => { txtDir.Text = fd; }); ok = true; }
+                    if (found != null) { string fd = found; Ui(() => { SetDir(fd); }); ok = true; }
                     else
                     {
-                        try { Ui(() => { txtDir.Text = FindNavicat(); }); } catch { }
+                        try { Ui(() => { SetDir(FindNavicat()); }); } catch { }
                         ok = false;
                     }
                 }
@@ -549,7 +670,7 @@ internal sealed class MainForm : GWindow
         using (var d = new FolderBrowserDialog())
         {
             d.Description = "选择 Navicat 目录（含 navicat.exe）";
-            if (d.ShowDialog() == DialogResult.OK) txtDir.Text = d.SelectedPath;
+            if (d.ShowDialog() == DialogResult.OK) { SetDir(d.SelectedPath); dirUserSet = true; }
         }
         if (!CheckDir(false)) { Step("目录校验未通过，请重新选择"); return; }
         Step("目录校验通过");
@@ -678,9 +799,10 @@ internal sealed class MainForm : GWindow
         {
             try
             {
-                try { Ui(delegate() { txtDir.Text = FindNavicat(); }); } catch { }
+                try { Ui(delegate() { RefreshDirIfAuto(); }); } catch { }
                 System.Threading.Thread.Sleep(150);
                 string dir = txtDir.Text.Trim().Trim('"');
+                Ui(delegate() { LogDirVersion(dir); });
                 string navExe = System.IO.Path.Combine(dir, "navicat.exe");
 
                 string err = AutoAct.InstallPatchOnly(dir, navExe, delegate(string m) { Ui(delegate() { Log(m); }); });
@@ -818,10 +940,11 @@ internal sealed class MainForm : GWindow
             try
             {
                 string req, code;
-                // 重新定位一次目录（用户可能刚装完 Navicat，或换过安装位置）
-                try { Ui(delegate() { txtDir.Text = FindNavicat(); }); } catch { }
+                // 重新定位一次目录，但只在"用户没指定且当前无效"时才动（不能覆盖手填的 18）
+                try { Ui(delegate() { RefreshDirIfAuto(); }); } catch { }
                 System.Threading.Thread.Sleep(150);
                 string reqDir = txtDir.Text.Trim().Trim('"');
+                Ui(delegate() { LogDirVersion(reqDir); });
                 string navExe = System.IO.Path.Combine(reqDir, "navicat.exe");
                 // ★ 日志里以 ##STEP## 开头的行会同步更新界面上的状态提示，
                 //   这样"请双击打开 Navicat"这类指引不必靠用户翻日志。

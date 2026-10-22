@@ -225,6 +225,29 @@ internal static class Program
             catch (Exception ex) { File.WriteAllText(mpath, "MODES_ERR " + ex.GetType().Name + " " + ex.Message); }
             return;
         }
+        // 隐藏自检：本机探测到的 Navicat 目录候选与选中项（装了 17 + 18 时排查"被改成 17"用）
+        //   用法: Navicat18Tool.exe --dir  ->  %TEMP%\nvdir.txt
+        if (args != null && args.Length >= 1 && args[0] == "--dir")
+        {
+            string dpath = Path.Combine(Path.GetTempPath(), "nvdir.txt");
+            try
+            {
+                string[] extra = null;
+                if (args.Length > 1)
+                {
+                    extra = new string[args.Length - 1];
+                    Array.Copy(args, 1, extra, 0, extra.Length);
+                }
+                File.WriteAllText(dpath,
+                    "# 候选注入（--dir 之后的参数）: " + (extra == null ? "(无)" : string.Join(" | ", extra)) + Environment.NewLine
+                    + MainForm.NavicatProbeReport(extra), Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                try { File.WriteAllText(dpath, "DIR_ERR " + ex.GetType().Name + " " + ex.Message); } catch { }
+            }
+            return;
+        }
         // 隐藏自检：输出本机设备码（供自动化测试构造合法 lic.bin 用，正常使用不受影响）
         if (args != null && args.Length >= 1 && args[0] == "--devid")
         {

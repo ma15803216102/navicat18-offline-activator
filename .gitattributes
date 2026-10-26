@@ -1,0 +1,11 @@
+# 统一换行符：仓库内文本一律 LF，Windows 批处理必须是 CRLF（cmd.exe 硬要求）
+* text=auto eol=lf
+
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+*.png binary
+*.jpg binary
+*.zip binary
+*.exe binary
+*.dll binary
